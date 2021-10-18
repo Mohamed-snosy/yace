@@ -21,9 +21,10 @@ extern crate proc_macro;
 #[macro_use]
 extern crate maplit;
 
+use futures::TryStreamExt;
 use lazy_static::lazy_static;
 use proc_macro::{Delimiter, Group, Ident, TokenStream, TokenTree};
-use sqlx::Connection;
+use sqlx::{Connection, Row};
 
 // Note: the use of that macro is a bit unusial. It works like this:
 //     𝖋𝖎𝖑𝖙𝖊𝖗_𝖝𝟴𝟲_𝖒𝖆𝖗𝖐𝖊𝖗𝖘! {
@@ -353,12 +354,18 @@ async fn get_instrution_info() -> String {
     // we get nested crate root.  Try to access both paths.
     let database_url = format!("sqlite:{}/test.db", root_path);
     let database_url_fallback = format!("sqlite:{}/../test.db", root_path);
-    let _pool = if let Ok(pool) = sqlx::SqliteConnection::connect(database_url.as_str()).await {
+    let mut pool = if let Ok(pool) = sqlx::SqliteConnection::connect(database_url.as_str()).await {
         pool
     } else {
         sqlx::SqliteConnection::connect(database_url_fallback.as_str())
             .await
             .expect("Failed to connect to test.db database")
     };
+    let mut rows = sqlx::query("SELECT * FROM instructions")
+        .fetch(&mut pool);
+    while let Some (row) = rows.try_next().await.expect("Heh") {
+        let instruction_name: &str =row.try_get("instruction_argument0").expect("whatever");
+        println!("instruction_name: {}", instruction_name);    
+    }
     root_path.to_string()
 }
